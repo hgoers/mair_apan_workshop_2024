@@ -3,14 +3,13 @@ title: "MAIR/APAN Workshop 2024"
 format: 
   html:
     self-contained: true
+toc: true
 editor: visual
 execute: 
   warning: false
 ---
 
-Last week's election saw surprising swings away from the Democrats at the Presidential level. Blue stronghold states, including New York, swung to the right. It is useful to place these political movements within the broader historical context of US Presidential elections.
-
-Today, we will use R to collect, explore, and communicate data on US Presidential Elections.
+Last week's election saw surprising swings away from the Democrats at the Presidential level. It is useful to place these political movements within the broader historical context of US Presidential elections. Today, we will use R to collect, explore, and communicate data on past US Presidential Elections. We will use the stories that emerge from trends in these data to develop our understanding of the most recent election and those to come.
 
 1.  We will start by collecting the relevant data using an API.
 
@@ -20,9 +19,47 @@ Today, we will use R to collect, explore, and communicate data on US Presidentia
 
 4.  Finally, we will explore tools in R to communicate our findings.
 
+## Set up
+
+To follow along with this workshop, you will need:
+
+1.  The latest version of R and RStudio
+
+2.  A new RProject
+
+3.  This `workshop.qmd` file (which you can download from <https://github.com/hgoers/mair_apan_workshop_2024>
+
+4.  The following R packages installed on to your local device:
+
+```{r}
+#| eval: false
+
+install.packages(c("tidyverse",
+                   "devtools",
+                   "dataverse",
+                   "here",
+                   "glue",
+                   "ggtext",
+                   "skimr",
+                   "MetBrewer",
+                   "scales",
+                   "maps",
+                   "mapdata",
+                   "leaflet",
+                   "sf",
+                   "htmltools",
+                   "patchwork",
+                   "ggh4x",
+                   "geofacet"))
+```
+
+::: callout-tip
+If you hover over a code chunk, you should see a little copy icon appear in the top right hand corner. Clicking on that copies the code in the code chunk. You can then easily paste this in your own script.
+:::
+
 ## Collecting your data
 
-We will start by collecting data on the 2020 US Presidential state-level returns. The [MIT Election Data + Science Lab](https://electionlab.mit.edu/data) provides this. To access their data, we will use the Harvard Dataverse API. We will access it using the R package `dataverse`.
+We will start by collecting data on historical US Presidential state-level returns. The [MIT Election Data + Science Lab](https://electionlab.mit.edu/data) provides these returns to the public. To access their data, we will use the Harvard Dataverse API. We will access it using the R package `dataverse`.
 
 ::: callout-note
 The `dataverse` package accesses the Harvard Dataverse Application Programming Interface (API) in the background. To learn more about how to access this API directly, check out the [Harvard Dataverse documentation](https://guides.dataverse.org/en/latest/api/index.html).
@@ -54,7 +91,7 @@ state_results_df <- get_dataframe_by_name(
 )
 ```
 
-This code programmatically pulls the most up-to-date data set from the API. Once the MIT Election Lab publishes the 2024 Presidential Election data, you will be able to access it without having to update your code.
+This code programmatically pulls the most up-to-date data set from the API. Once the MIT Election Lab publishes the 2024 Presidential Election data, you will only need to update the file name to be able to access it.
 
 ## Saving your data
 
@@ -76,7 +113,7 @@ To point `here::here()` to this folder, you simply supply it with the sub-folder
 here::here("data-raw")
 ```
 
-I am going to save a copy of the latest US Presidential Election results. I am going to include in the file name the date that I pulled the data. This prevents me from overwriting previous versions of the data. I need those previous versions if I want to track changes made.
+I am going to save a copy of the latest US Presidential Election results. I am going to include in the file name the date that I pulled the data. This stops me from overwriting previous versions of the data. I need those previous versions if I want to track changes made.
 
 ::: callout-tip
 I use `glue::glue()` to evaluate my R code (enclosed in those curly brackets) and convert the output into a string.
@@ -92,7 +129,7 @@ write_csv(state_results_df,
 
 ## Reading in the latest version of your data
 
-To make sure you are reading in the latest version, you can run the following:
+To make sure you are reading in the latest version of your data, you can run the following:
 
 ```{r}
 
@@ -127,7 +164,9 @@ First, I want to get a quick overview of my data. I like to use `skimr::skim()` 
 skimr::skim(state_results_df)
 ```
 
-Let's make sure that we have all years covered. US Presidential elections occur every four years, so we should have `r ((max_year - min_year) / 4) + 1` unique years in our dataset. Let's confirm that:
+### Checking your data set is complete
+
+Let's make sure that we have all years covered. US Presidential elections occur every four years, so we should have `r ((max_year - min_year) / 4) + 1` unique years in our data set. Let's confirm that:
 
 ```{r}
 state_results_df |> 
@@ -145,11 +184,11 @@ n_candidates_annual <- state_results_df |>
 n_candidates_annual
 ```
 
-This is a bit unweildy. Let's visualize it to get a better sense:
+This is a bit unwieldy. Let's visualize it to get a better sense:
 
 ```{r}
 ggplot(n_candidates_annual, aes(x = year, y = n)) + 
-  geom_line() + 
+  geom_line(linewidth = 1) + 
   geom_point() + 
   theme_minimal() + 
   theme(plot.title = element_text(face = "bold"),
@@ -221,7 +260,7 @@ ggplot(write_in_count_annual, aes(x = year, y = n, colour = writein)) +
   scale_color_manual(values = MetBrewer::met.brewer("Homer1"))
 ```
 
-Partially, yes. There is a huge spike in the number of candidates written in to the ballot. There also appears to be an increase in the number of candidates on the ballot; however, the appears to be following a general trend across time.
+Partially, yes. There is a huge spike in the number of candidates written in to the ballot. There also appears to be an increase in the number of candidates on the ballot; however, this appears to be following a general trend across time.
 
 ::: callout-note
 Note that there are some years in which no write-in candidates emerged (1976 to 1984, 1992, 1996, and 2012). The way we calculated the number of write-in and non-write-in candidates above leaves these years as NAs, not zero counts. To fix this, do the following:
@@ -286,7 +325,7 @@ ggplot(state_count_annual, aes(x = year, y = n)) +
 Can anyone see any commonalities between the states in which there were large spikes in the number of candidates running?
 :::
 
-## Focusing on the presidential races
+## Focusing on the major parties
 
 We want to place this year's Presidential election within its historical context. We have explored our data to get a general understanding of those trends, but we now want to formalize them.
 
@@ -531,7 +570,7 @@ p2 <- pres_state_results_df |>
 p1 / p2
 ```
 
-Let's focus on individual states:
+Let's focus on individual states. We will start with the seven swing states everyone was tracking last Tuesday night:
 
 ```{r}
 swing_states_2024 <- c("AZ", "GA", "MI", "NV", "NC", "PA", "WI")
@@ -549,7 +588,7 @@ pres_state_results_df |>
   scale_colour_manual(values = c("#4672AB", "#AA4841"))
 ```
 
-This is good, but we can improve the reader's ability to quickly grasp swings in these states by highlighting the winning party more explictly: 
+This is good, but we can improve the reader's ability to quickly grasp swings in these states by highlighting the winning party more explictly:
 
 ```{r}
 library(ggh4x)
@@ -579,7 +618,7 @@ pres_adv_states |>
        y = NULL)
 ```
 
-We can do something similar for each party's safest seats in th 1976 US Presidential Election: 
+We can do something similar for each party's safest seats in th 1976 US Presidential Election:
 
 ```{r}
 dem_safest_5 <- pres_state_results_df |> 
@@ -649,11 +688,10 @@ ggplot(pres_adv_states, aes(x = year)) +
        y = NULL)
 ```
 
-Pretty cool! We can see changes to each party's position in each state over time. We can see from the relative widths of these plots which states are more consistently on party's stronghold, and which tend to be relatively close races. 
+Pretty cool! We can see changes to each party's position in each state over time. We can see from the relative widths of these plots which states are more consistently on party's stronghold, and which tend to be relatively close races.
 
-Next, we are going to pick an interesting story from these data and learn how to communicate it in an engaging and replicable way with R. 
+Next, we are going to pick an interesting story from these data and learn how to communicate it in an engaging and replicable way with R.
 
-::: {.callout-note}
-I will shortly be referring to a new language called **markdown**. If you are not familiar with markdown, I highly recommend this short tutorial: [https://www.markdowntutorial.com/](https://www.markdowntutorial.com/). 
+::: callout-note
+I will shortly be referring to a new language called **markdown**. If you are not familiar with markdown, I highly recommend this short tutorial: <https://www.markdowntutorial.com/>.
 :::
-

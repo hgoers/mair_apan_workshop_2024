@@ -1,0 +1,44 @@
+---
+title: "The Swinging States of America"
+format: 
+  html:
+    self-contained: true
+editor: visual
+execute:
+  echo: false
+  warning: false
+---
+
+```{r}
+library(tidyverse)
+library(ggh4x)
+library(geofacet)
+library(ggtext)
+```
+
+```{r}
+# Run to get latest data
+# source(here::here("src.R"))
+
+source(here::here("munge.R"))
+```
+
+Last week's election saw surprising swings away from the Democrats at the Presidential level. It is useful to place these political movements within the broader historical context of US Presidential elections. This analysis looks at trends in voting across US states in Presidential Elections from `r min_year` to `r max_year`. 
+
+```{r}
+ggplot(pres_adv_states, aes(x = year)) + 
+  geom_line(aes(y = DEMOCRAT, colour = "#4672AB")) + 
+  geom_line(aes(y = REPUBLICAN, colour = "#AA4841")) + 
+  facet_geo(~ state_po) + 
+  stat_difference(aes(ymin = REPUBLICAN, ymax = DEMOCRAT), alpha = 0.3) + 
+  scale_colour_identity() + 
+  scale_fill_manual(values = c("#4672AB", "#AA4841")) +
+  theme_minimal() + 
+  theme(axis.text = element_blank(),
+        legend.position = "none",
+        plot.title = ggtext::element_markdown(face = "bold"),
+        plot.title.position = "plot") + 
+  labs(title = glue::glue("Proportion of total votes cast won by the <span style='color:#4672AB;'>Democractic</span> and <span style='color:#AA4841;'>Republican</span> <br>candidate in US Presidential elections from {min_year} to {max_year}"),
+       x = NULL,
+       y = NULL)
+```
