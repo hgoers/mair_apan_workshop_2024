@@ -1,0 +1,3 @@
+## MAIN/APAN Joint Methods Workshop Series 2024 - Intermediate R
+
+Unlock the power of R in our hands-on data exploration and communication workshop! Dive into real-world election exit poll data, learning to seamlessly download, analyze, and visualize insights with cutting-edge tools like tidyverse, ggplot, plotly, and leaflet. We'll guide you through effective workflows to ensure replicability, introduce you to Quarto for professional reporting, and even publish dynamic, interactive data reports online. Whether you're a data science beginner or a seasoned analyst, this workshop will equip you with practical skills to bring data to life.
