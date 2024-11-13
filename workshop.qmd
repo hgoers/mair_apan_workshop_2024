@@ -1,0 +1,659 @@
+---
+title: "MAIR/APAN Workshop 2024"
+format: 
+  html:
+    self-contained: true
+editor: visual
+execute: 
+  warning: false
+---
+
+Last week's election saw surprising swings away from the Democrats at the Presidential level. Blue stronghold states, including New York, swung to the right. It is useful to place these political movements within the broader historical context of US Presidential elections.
+
+Today, we will use R to collect, explore, and communicate data on US Presidential Elections.
+
+1.  We will start by collecting the relevant data using an API.
+
+2.  We will then clean up and explore these data, readying ourselves for some analysis.
+
+3.  We will explore various ways of visualizing these data, including creating interactive plots and maps.
+
+4.  Finally, we will explore tools in R to communicate our findings.
+
+## Collecting your data
+
+We will start by collecting data on the 2020 US Presidential state-level returns. The [MIT Election Data + Science Lab](https://electionlab.mit.edu/data) provides this. To access their data, we will use the Harvard Dataverse API. We will access it using the R package `dataverse`.
+
+::: callout-note
+The `dataverse` package accesses the Harvard Dataverse Application Programming Interface (API) in the background. To learn more about how to access this API directly, check out the [Harvard Dataverse documentation](https://guides.dataverse.org/en/latest/api/index.html).
+:::
+
+```{r}
+library(tidyverse)
+library(dataverse)
+```
+
+We will be accessing the **U.S. President 1976–2020** data set. To do this, we need three pieces of information:
+
+1.  The name of the file we want to download
+
+2.  The data set's DOI
+
+3.  The data set's format
+
+We can get all of this information from the data set's page on the [Harvard Dataverse website](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/42MVDX).
+
+```{r}
+
+state_results_df <- get_dataframe_by_name(
+  filename = "1976-2020-president.tab",
+  dataset = "10.7910/DVN/42MVDX",
+  server = "dataverse.harvard.edu",
+  original = T,
+  .f = readr::read_csv
+)
+```
+
+This code programmatically pulls the most up-to-date data set from the API. Once the MIT Election Lab publishes the 2024 Presidential Election data, you will be able to access it without having to update your code.
+
+## Saving your data
+
+You should always save a copy of your data locally, particularly when those data are updated regularly. The results of your analysis may change with updates to the raw data. You want to be able to track those changes (and uncover why they occurred).
+
+The `here` R package makes saving data in a robust way very easy. Using `here::here()`, you can automatically update file paths to reflect the computer you are currently using. To demonstrate, run the following code:
+
+```{r}
+here::here()
+```
+
+Your output will be different to mine. `here::here()` locates the top level of the file directory in which you are located. This is helpful when you share your code with others (or switch to a new computer). Hard coded file paths will cause annoying errors.
+
+I like to save my raw data in a folder called `data-raw`. Go ahead a make a similar folder in your RProject.
+
+To point `here::here()` to this folder, you simply supply it with the sub-folder name(s) as a string:
+
+```{r}
+here::here("data-raw")
+```
+
+I am going to save a copy of the latest US Presidential Election results. I am going to include in the file name the date that I pulled the data. This prevents me from overwriting previous versions of the data. I need those previous versions if I want to track changes made.
+
+::: callout-tip
+I use `glue::glue()` to evaluate my R code (enclosed in those curly brackets) and convert the output into a string.
+
+I use `lubridate::today()` (loaded in with the `library(tidyverse)` command) to get today's date.
+:::
+
+```{r}
+
+write_csv(state_results_df, 
+          here::here("data-raw", glue::glue("pres_state_results_{today()}.csv")))
+```
+
+## Reading in the latest version of your data
+
+To make sure you are reading in the latest version, you can run the following:
+
+```{r}
+
+state_results_df <- list.files(path = here::here("data-raw"),
+           pattern = "pres_state_results_.*",
+           full.names = T) |> 
+  max() |> 
+  read_csv()
+```
+
+## Exploring your data
+
+```{r}
+#| echo: false
+
+min_year <- state_results_df |> 
+  slice_min(year) |> 
+  distinct(year) |> 
+  pull()
+
+max_year <- state_results_df |> 
+  slice_max(year) |> 
+  distinct(year) |> 
+  pull()
+```
+
+We now have the latest published data on the number of votes each US Presidential candidate received in all elections from `r min_year` to `r max_year`. Let's take a good look at it.
+
+First, I want to get a quick overview of my data. I like to use `skimr::skim()` to do this:
+
+```{r}
+skimr::skim(state_results_df)
+```
+
+Let's make sure that we have all years covered. US Presidential elections occur every four years, so we should have `r ((max_year - min_year) / 4) + 1` unique years in our dataset. Let's confirm that:
+
+```{r}
+state_results_df |> 
+  distinct(year)
+```
+
+Great! I wonder if the number of presidential candidates has changed over time. Let's see how many people ran each year:
+
+```{r}
+n_candidates_annual <- state_results_df |> 
+  distinct(year, candidate) |> 
+  drop_na() |> 
+  count(year)
+
+n_candidates_annual
+```
+
+This is a bit unweildy. Let's visualize it to get a better sense:
+
+```{r}
+ggplot(n_candidates_annual, aes(x = year, y = n)) + 
+  geom_line() + 
+  geom_point() + 
+  theme_minimal() + 
+  theme(plot.title = element_text(face = "bold"),
+        plot.title.position = "plot") + 
+  labs(title = glue::glue("Number of people running for US President, {min_year} - {max_year}"),
+       x = "Year",
+       y = NULL,
+       caption = "Source: MIT Election Lab")
+```
+
+Hmm, that's a shocking spike in 2020. What happened? Let's take a closer look at the data.
+
+First, let's confirm that these are indeed individual candidates:
+
+```{r}
+state_results_df |> 
+  filter(year == 2020) |> 
+  distinct(candidate) |> 
+  drop_na()
+```
+
+Let's then check whether one party is driving this:
+
+```{r}
+party_count_annual <- state_results_df |> 
+  distinct(year, party_simplified, candidate) |> 
+  drop_na(candidate) |> 
+  count(year, party_simplified)
+```
+
+```{r}
+ggplot(party_count_annual, aes(x = year, y = n, colour = party_simplified)) + 
+  geom_line() + 
+  geom_point() + 
+  theme_minimal() + 
+  theme(plot.title = element_text(face = "bold"),
+        plot.title.position = "plot",
+        legend.position = "top") + 
+  labs(title = glue::glue("Number of people running for US President, {min_year} - {max_year}"),
+       x = "Year",
+       y = NULL,
+       colour = "Party",
+       caption = "Source: MIT Election Lab") + 
+  scale_color_manual(values = MetBrewer::met.brewer("Homer1"))
+```
+
+It does appear that the number of "Other" candidates is unusually large (and has been driving the general trend of increasing numbers of candidates over the years). The other large party groups - the Democrats, Republicans, and Libertarians - appear to have fielded their usual number of candidates.
+
+Could this be driven by a large number of write-in candidates?
+
+```{r}
+write_in_count_annual <- state_results_df |> 
+  drop_na(candidate, writein) |> 
+  distinct(year, writein, candidate) |> 
+  count(year, writein)
+
+ggplot(write_in_count_annual, aes(x = year, y = n, colour = writein)) + 
+  geom_line() + 
+  geom_point() + 
+  theme_minimal() + 
+  theme(plot.title = element_text(face = "bold"),
+        plot.title.position = "plot",
+        legend.position = "top") + 
+  labs(title = glue::glue("Number of people running for US President, {min_year} - {max_year}"),
+       x = "Year",
+       y = NULL,
+       colour = "Party",
+       caption = "Source: MIT Election Lab") + 
+  scale_color_manual(values = MetBrewer::met.brewer("Homer1"))
+```
+
+Partially, yes. There is a huge spike in the number of candidates written in to the ballot. There also appears to be an increase in the number of candidates on the ballot; however, the appears to be following a general trend across time.
+
+::: callout-note
+Note that there are some years in which no write-in candidates emerged (1976 to 1984, 1992, 1996, and 2012). The way we calculated the number of write-in and non-write-in candidates above leaves these years as NAs, not zero counts. To fix this, do the following:
+
+```{r}
+# Create a scope data frame
+scope_df <- state_results_df |> 
+  distinct(year) |> 
+  crossing(writein = c(T, F))
+
+# Append your calculations to that scope
+write_in_count_annual_full <- scope_df |> 
+  left_join(write_in_count_annual, by = join_by(year, writein)) |> 
+  mutate(n = replace_na(n, 0))
+
+ggplot(write_in_count_annual_full, aes(x = year, y = n, colour = writein)) + 
+  geom_line() + 
+  geom_point() + 
+  theme_minimal() + 
+  theme(plot.title = element_text(face = "bold"),
+        plot.title.position = "plot",
+        legend.position = "top") + 
+  labs(title = glue::glue("Number of people running for US President, {min_year} - {max_year}"),
+       x = "Year",
+       y = NULL,
+       colour = "Party",
+       caption = "Source: MIT Election Lab") + 
+  scale_color_manual(values = MetBrewer::met.brewer("Homer1"))
+```
+:::
+
+Could this be explained by one (or a small group of states)?
+
+```{r}
+state_count_annual <- state_results_df |> 
+  distinct(year, state_po, candidate) |> 
+  drop_na(candidate) |> 
+  count(year, state_po)
+```
+
+```{r}
+#| fig-height: 10
+
+ggplot(state_count_annual, aes(x = year, y = n)) + 
+  geom_line() + 
+  geom_point() + 
+  facet_wrap(~ state_po) + 
+  theme_minimal() + 
+  theme(plot.title = element_text(face = "bold"),
+        plot.title.position = "plot") + 
+  labs(title = glue::glue("Number of people running for US President, {min_year} - {max_year}"),
+       x = "Year",
+       y = NULL,
+       colour = "Party",
+       caption = "Source: MIT Election Lab") + 
+  scale_x_continuous(breaks = seq(min_year, max_year, 20))
+```
+
+::: callout-caution
+## Question
+
+Can anyone see any commonalities between the states in which there were large spikes in the number of candidates running?
+:::
+
+## Focusing on the presidential races
+
+We want to place this year's Presidential election within its historical context. We have explored our data to get a general understanding of those trends, but we now want to formalize them.
+
+To begin, let's focus our data:
+
+```{r}
+pres_state_results_df <- state_results_df |> 
+  filter(
+    # Isolate DEM and REP from other party candidates
+    party_simplified %in% c("DEMOCRAT", "REPUBLICAN"),
+    # Remove other candidates
+    !candidate %in% c("OTHER", NA_character_) 
+  ) |>
+  # Get the total count of votes cast for other candidates, preserving
+  # the total vote count for the state and the candidate
+  group_by(year, state, state_po, party_simplified, candidate, totalvotes) |> 
+  summarise(candidatevotes = sum(candidatevotes)) |>
+  # Always remember to ungroup your data
+  ungroup() |> 
+  # Calculate the proportion of votes cast in each state won by each 
+  # candidate
+  mutate(prop_votes = candidatevotes / totalvotes)
+
+pres_state_results_df
+```
+
+Quickly check to make sure everything looks correct. Are there any outliers in votes cast?
+
+```{r}
+ggplot(pres_state_results_df, aes(x = totalvotes)) + 
+  geom_boxplot()
+```
+
+Our data are skewed. This is likely because there are large differences in states' populations, with a few states having very large populations. Let's check that:
+
+```{r}
+pres_state_results_df |>
+  distinct(year, state, totalvotes) |> 
+  # Account for changes to population counts over the decades
+  group_by(year) |> 
+  # Cut the data into five groups based on vote 
+  mutate(vote_group = cut_interval(totalvotes, 5, 
+                                   labels = c("Rare",
+                                              "Medium rare",
+                                              "Medium",
+                                              "Well done",
+                                              "Burnt"))) |> 
+  ungroup() |> 
+  filter(vote_group %in% c("Well done", "Burnt")) |> 
+  distinct(state)
+```
+
+These are the states with the four largest populations in the country. Those "outliers" are just an artifact of the distribution of people across America.
+
+::: callout-caution
+## Question
+
+Can you think of anything else we should check in these data?
+:::
+
+### Tracking proportion of votes won by state and over time
+
+Now that we have cleaned and checked our data, we can answer our initial research question: What proportion of votes did the Democratic and Republican candidates win in each state in each year?
+
+Let's play around with the 2020 Presidential election results:
+
+```{r}
+pres_state_results_2020 <- pres_state_results_df |> 
+  filter(year == 2020)
+```
+
+Let's look at some different ways to plot the results by state. First, let's plot the proportion of votes won by each candidate in each state in a way that makes the comparison easy to see.
+
+```{r}
+#| fig-height: 10
+
+pres_state_results_2020 |> 
+  mutate(prop_votes = if_else(party_simplified == "REPUBLICAN", -prop_votes, prop_votes)) |> 
+  ggplot(aes(x = prop_votes, y = reorder(state, prop_votes), 
+             fill = party_simplified)) + 
+  geom_col() + 
+  geom_vline(xintercept = c(-0.5, 0.5), colour = "grey") + 
+  theme_minimal() + 
+  theme(legend.position = "none",
+        plot.title = ggtext::element_markdown(face = "bold"),
+        plot.title.position = "plot") + 
+  labs(title = "Percentage of votes won by <span style='color:#4672AB;'>Joe Biden</span> and <span style='color:#AA4841;'>Donald Trump</span> in the 2020 US <br>Presidential Election",
+       x = "Percentage of votes won",
+       y = NULL) + 
+  scale_fill_manual(values = c("#4672AB", "#AA4841")) + 
+  scale_x_continuous(breaks = c(-1, -0.5, 0.5, 1),
+                     limits = c(-1, 1),
+                     labels = c("-1" = "100%",
+                                "-0.5" = "50%",
+                                "0.5" = "50%",
+                                "1" = "100%"))
+```
+
+Next, we can visualize the difference in the proportion of votes won by each candidate:
+
+```{r}
+#| fig-height: 10
+
+prop_won_2020 <- pres_state_results_2020 |> 
+  # Make sure the order of the parties is consistent
+  arrange(state, party_simplified) |> 
+  group_by(state) |> 
+  mutate(prop_adv = prop_votes - lead(prop_votes)) |>
+  ungroup() |> 
+  drop_na(prop_adv)
+  
+ggplot(prop_won_2020, aes(x = prop_adv, y = reorder(state, prop_adv), 
+             fill = prop_adv < 0)) + 
+  geom_col() + 
+  theme_minimal() + 
+  theme(legend.position = "none",
+        plot.title = ggtext::element_markdown(face = "bold"),
+        plot.title.position = "plot") + 
+  labs(title = "Advantage won by <span style='color:#4672AB;'>Joe Biden</span> and <span style='color:#AA4841;'>Donald Trump</span> in the 2020 US Presidential <br>Election",
+       x = "Percentage of votes won",
+       y = NULL) + 
+  scale_fill_manual(values = c("#4672AB", "#AA4841")) + 
+  scale_x_continuous(labels = scales::percent,
+                     limits = c(-1, 1))
+```
+
+Finally, we can plot this on a map:
+
+```{r}
+library(maps)
+library(mapdata)
+
+us_states <- map_data("state")
+
+prop_won_sf <- us_states |> 
+  left_join(mutate(prop_won_2020, region = str_to_lower(state)),
+            by = join_by(region))
+
+ggplot(prop_won_sf, aes(x = long, y = lat, fill = prop_adv, group = group)) + 
+  geom_polygon(color = "lightgrey") + 
+  guides(fill = FALSE) + 
+  theme_void() + 
+  coord_fixed(1.3) + 
+  scale_fill_gradient2(low = "#AA4841",
+                       high = "#4672AB",
+                       midpoint = 0)
+```
+
+You can even make this interactive:
+
+```{r}
+library(leaflet)
+library(sf)
+library(htmltools)
+
+us_states <- read_sf("https://rstudio.github.io/leaflet/json/us-states.geojson")
+
+prop_won_sf <- us_states |>
+  mutate(state = str_to_upper(name)) |> 
+  left_join(prop_won_2020, by = join_by(state))
+
+mypalette <- colorNumeric(
+  palette = c("#AA4841", "white", "#4672AB"),
+  domain = c(-1, 1),
+  na.color = "transparent"
+)
+
+labels <- glue::glue("{prop_won_sf$state}: {scales::percent(prop_won_sf$prop_adv, accuracy = 0.1)}")
+
+leaflet(prop_won_sf) |> 
+  setView(-96, 37.8, 4) |> 
+  addPolygons(fillColor = ~ mypalette(prop_adv),
+              weight = 2,
+              color = "white",
+              fillOpacity = 1,
+              highlightOptions = highlightOptions(weight = 4,
+                                                  color = "darkgrey",
+                                                  fillOpacity = 0.7,
+                                                  bringToFront = T),
+              label = labels,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))
+
+```
+
+::: callout-caution
+Everyone loves a map, but you should use them cautiously. They can be misleading. Large states (by area) are overemphasized. Small states (and DC) can be very difficult to see. Because the importance of a state's votes to the outcome of the Presidential election is not proportional to its geographic size, this can obscure the outcome you are trying to communicate.
+:::
+
+### Looking at trends over time
+
+We are most interested in learning about how support for each party's Presidential candidate has changed over time. Let's start to explore these trends.
+
+First, let's look which party's candidate won the popular vote over time:
+
+```{r}
+pres_national_yearly <- pres_state_results_df |> 
+  group_by(year, party_simplified) |> 
+  summarise(candidatevotes = sum(candidatevotes),
+            totalvotes = sum(totalvotes),
+            prop = candidatevotes / totalvotes) |> 
+  ungroup()
+```
+
+```{r}
+p1 <- ggplot(pres_national_yearly, aes(x = year, y = prop, colour = party_simplified)) + 
+  geom_line(linewidth = 1) + 
+  geom_point() + 
+  theme_minimal() + 
+  theme(legend.position = "none",
+        plot.title = ggtext::element_markdown(face = "bold"),
+        plot.title.position = "plot") + 
+  labs(title = glue::glue("Proportion of total votes cast won by the <span style='color:#4672AB;'>Democractic</span> and <span style='color:#AA4841;'>Republican</span> <br>candidate in US Presidential elections from {min_year} to {max_year}"),
+       x = NULL,
+       y = NULL) + 
+  scale_colour_manual(values = c("#4672AB", "#AA4841")) + 
+  scale_y_continuous(labels = scales::percent)
+
+p1
+```
+
+It would be nice to add some information about which candidate ran in each of these years:
+
+```{r}
+#| fig-height: 8
+
+library(patchwork)
+
+p2 <- pres_state_results_df |> 
+  distinct(year, party_simplified, candidate) |> 
+  ggplot(aes(x = year, y = reorder(candidate, year), colour = party_simplified)) + 
+  geom_point() + 
+  geom_line(linewidth = 1) + 
+  theme_minimal() + 
+  theme(legend.position = "none") + 
+  labs(x = "Year",
+       y = NULL) + 
+  scale_colour_manual(values = c("#4672AB", "#AA4841"))
+
+p1 / p2
+```
+
+Let's focus on individual states:
+
+```{r}
+swing_states_2024 <- c("AZ", "GA", "MI", "NV", "NC", "PA", "WI")
+
+pres_state_results_df |> 
+  filter(state_po %in% swing_states_2024) |> 
+  ggplot(aes(x = year, y = prop_votes, colour = party_simplified)) + 
+  geom_line() + 
+  geom_point() + 
+  facet_wrap(~ state, nrow = 2) + 
+  theme_minimal() + 
+  theme(legend.position = "none") + 
+  labs(x = "Year",
+       y = NULL) + 
+  scale_colour_manual(values = c("#4672AB", "#AA4841"))
+```
+
+This is good, but we can improve the reader's ability to quickly grasp swings in these states by highlighting the winning party more explictly: 
+
+```{r}
+library(ggh4x)
+
+pres_adv_states <- pres_state_results_df |> 
+  pivot_wider(names_from = party_simplified, values_from = prop_votes) |> 
+  group_by(year, state, state_po) |> 
+  summarise(DEMOCRAT = sum(DEMOCRAT, na.rm = T),
+            REPUBLICAN = sum(REPUBLICAN, na.rm = T)) |> 
+  ungroup()
+
+pres_adv_states |> 
+  filter(state_po %in% swing_states_2024) |> 
+  ggplot(aes(x = year)) + 
+  geom_line(aes(y = DEMOCRAT, colour = "#4672AB")) + 
+  geom_line(aes(y = REPUBLICAN, colour = "#AA4841")) + 
+  facet_wrap(~ state, nrow = 2) + 
+  stat_difference(aes(ymin = REPUBLICAN, ymax = DEMOCRAT), alpha = 0.3) + 
+  scale_colour_identity() + 
+  scale_fill_manual(values = c("#4672AB", "#AA4841")) +
+  theme_minimal() + 
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold"),
+        plot.title.position = "plot") + 
+  labs(title = "Proportion of total votes cast won by each party's candidate in the 2024 US \nPresidential Election swing states",
+       x = "Year",
+       y = NULL)
+```
+
+We can do something similar for each party's safest seats in th 1976 US Presidential Election: 
+
+```{r}
+dem_safest_5 <- pres_state_results_df |> 
+  filter(year == 1976, party_simplified == "DEMOCRAT") |> 
+  slice_max(prop_votes, n = 5)
+
+pres_adv_states |> 
+  filter(state_po %in% dem_safest_5$state_po) |> 
+  ggplot(aes(x = year)) + 
+  geom_line(aes(y = DEMOCRAT, colour = "#4672AB")) + 
+  geom_line(aes(y = REPUBLICAN, colour = "#AA4841")) + 
+  facet_wrap(~ state, nrow = 2) + 
+  stat_difference(aes(ymin = REPUBLICAN, ymax = DEMOCRAT), alpha = 0.3) + 
+  scale_colour_identity() + 
+  scale_fill_manual(values = c("#4672AB", "#AA4841")) +
+  theme_minimal() + 
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold"),
+        plot.title.position = "plot") + 
+  labs(title = "Proportion of total votes cast won by each party's candidate in the Democrat's \nsafest states in the 1976 Presidential Election",
+       x = "Year",
+       y = NULL)
+```
+
+```{r}
+rep_safest_5 <- pres_state_results_df |> 
+  filter(year == 1976, party_simplified == "REPUBLICAN") |> 
+  slice_max(prop_votes, n = 5)
+
+pres_adv_states |> 
+  filter(state_po %in% rep_safest_5$state_po) |> 
+  ggplot(aes(x = year)) + 
+  geom_line(aes(y = DEMOCRAT, colour = "#4672AB")) + 
+  geom_line(aes(y = REPUBLICAN, colour = "#AA4841")) + 
+  facet_wrap(~ state, nrow = 2) + 
+  stat_difference(aes(ymin = REPUBLICAN, ymax = DEMOCRAT), alpha = 0.3) + 
+  scale_colour_identity() + 
+  scale_fill_manual(values = c("#AA4841", "#4672AB")) +
+  theme_minimal() + 
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold"),
+        plot.title.position = "plot") + 
+  labs(title = "Proportion of total votes cast won by each party's candidate in the Republican's \nsafest states in the 1976 Presidential Election",
+       x = "Year",
+       y = NULL)
+```
+
+In fact, we can do this for all US states and present them in a geographically correct way using the `geofacet` R package:
+
+```{r}
+library(geofacet)
+
+ggplot(pres_adv_states, aes(x = year)) + 
+  geom_line(aes(y = DEMOCRAT, colour = "#4672AB")) + 
+  geom_line(aes(y = REPUBLICAN, colour = "#AA4841")) + 
+  facet_geo(~ state_po) + 
+  stat_difference(aes(ymin = REPUBLICAN, ymax = DEMOCRAT), alpha = 0.3) + 
+  scale_colour_identity() + 
+  scale_fill_manual(values = c("#4672AB", "#AA4841")) +
+  theme_minimal() + 
+  theme(axis.text = element_blank(),
+        legend.position = "none",
+        plot.title = ggtext::element_markdown(face = "bold"),
+        plot.title.position = "plot") + 
+  labs(title = glue::glue("Proportion of total votes cast won by the <span style='color:#4672AB;'>Democractic</span> and <span style='color:#AA4841;'>Republican</span> <br>candidate in US Presidential elections from {min_year} to {max_year}"),
+       x = NULL,
+       y = NULL)
+```
+
+Pretty cool! We can see changes to each party's position in each state over time. We can see from the relative widths of these plots which states are more consistently on party's stronghold, and which tend to be relatively close races. 
+
+Next, we are going to pick an interesting story from these data and learn how to communicate it in an engaging and replicable way with R. 
+
+::: {.callout-note}
+I will shortly be referring to a new language called **markdown**. If you are not familiar with markdown, I highly recommend this short tutorial: [https://www.markdowntutorial.com/](https://www.markdowntutorial.com/). 
+:::
+
