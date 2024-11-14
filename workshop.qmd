@@ -9,7 +9,7 @@ execute:
   warning: false
 ---
 
-Last week's election saw surprising swings away from the Democrats at the Presidential level. It is useful to place these political movements within the broader historical context of US Presidential elections. Today, we will use R to collect, explore, and communicate data on past US Presidential Elections. We will use the stories that emerge from trends in these data to develop our understanding of the most recent election and those to come.
+Last week's election saw surprising swings away from the Democrats at the Presidential level, including among many blue stronghold states. It is useful to place these political movements within the broader historical context of US Presidential elections. Today, we will use R to collect, explore, and communicate data on past US Presidential Elections. We will use the stories that emerge from trends in these data to develop our understanding of the most recent election and those to come.
 
 1.  We will start by collecting the relevant data using an API.
 
@@ -27,7 +27,7 @@ To follow along with this workshop, you will need:
 
 2.  A new RProject
 
-3.  This `workshop.qmd` file (which you can download from <https://github.com/hgoers/mair_apan_workshop_2024>
+3.  This `workshop.qmd` file (which you can download from <https://github.com/hgoers/mair_apan_workshop_2024>)
 
 4.  The following R packages installed on to your local device:
 
